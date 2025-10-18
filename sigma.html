@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ExoticSoftware — Overlay</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+  html,body { height: 100%; background: #0b0d10; color: #e6eef6; overflow: hidden; -webkit-user-select:none; user-select:none; }
+  canvas#overlay { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+
+  /* Panel */
+  .panel {
+    position: fixed;
+    right: 18px;
+    top: 18px;
+    width: 360px;
+    background: linear-gradient(180deg, rgba(7,10,14,0.95), rgba(12,15,20,0.92));
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    border-radius: 12px;
+    padding: 12px;
+    z-index: 60;
+    touch-action: none; /* important for dragging on touch */
+    cursor: grab;
+  }
+  .panel.dragging { cursor: grabbing; }
+
+  .header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .logo { width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,#2b6cff,#7d3cff);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:white;
+    box-shadow: 0 6px 18px rgba(45,60,255,0.08); font-size:15px; }
+  .title { font-weight:700; font-size:15px; color:#e8f0ff; }
+  .subtitle { font-size:11px; color:#9fb0d9; }
+
+  .tabs { display:flex; gap:8px; margin:8px 0 12px; }
+  .tab {
+    padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);
+    font-size:13px; cursor:pointer; color:#bcd3ff;
+  }
+  .tab.active { background: linear-gradient(90deg, rgba(43,108,255,0.14), rgba(125,60,255,0.10)); color: #eaf2ff; border:1px solid rgba(80,120,255,0.14); }
+
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:8px 0; }
+  .label { font-size:13px; color:#cfe1ff; }
+  .small { font-size:12px; color:#9fb0d9; }
+
+  .control { display:flex; align-items:center; gap:10px; }
+  .toggle {
+    width:46px; height:24px; border-radius:14px; background:#1b2130; position:relative; cursor:pointer; border:1px solid rgba(255,255,255,0.03);
+  }
+  .toggle .knob {
+    position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#eef3ff; transition:all .14s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  }
+  .toggle.on { background: linear-gradient(90deg,#2b6cff,#7d3cff); }
+  .toggle.on .knob { transform: translateX(22px); background: #fff; }
+
+  input[type="range"] { width: 160px; }
+  .slider-value { font-weight:700; color:#dff0ff; font-size:12px; min-width:36px; text-align:right; }
+
+  .note { font-size:11px; color:#98abcf; margin-top:8px; }
+
+  .crosshair {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    z-index: 40; pointer-events:none;
+  }
+  .dot { width:6px;height:6px;border-radius:50%; background:#ffd24d; box-shadow:0 0 14px rgba(255,210,77,0.35); }
+
+  .footer { margin-top:10px; font-size:11px; color:#7f98c0; display:flex; justify-content:space-between; align-items:center;}
+  .btn { padding:6px 10px; border-radius:8px; background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.03); cursor:pointer; font-size:13px; color:#dfeeff; }
+
+  .badge { font-size:10px; background: rgba(255,255,255,0.04); padding:4px 8px; border-radius:8px; color:#dfeeff; }
+
+  @media (max-width:420px){
+    .panel { width: 94%; right: 3%; left: 3%; top: 10px; }
+  }
+
+  /* REC indicator (draggable) */
+  .rec-indicator {
+    position: fixed; left: 18px; top: 18px; z-index: 61; display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:10px;
+    background: rgba(0,0,0,0.45); color:#ffd4d4; border:1px solid rgba(255,80,80,0.12); font-size:13px; visibility:hidden; cursor:grab;
+    touch-action: none;
+  }
+  .rec-indicator.dragging { cursor:grabbing; }
+  .rec-dot { width:10px; height:10px; border-radius:50%; background:#ff3b3b; box-shadow:0 4px 14px rgba(255,59,59,0.25); }
+
+  /* Popup modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 100; display:none; align-items:center; justify-content:center; background: rgba(2,6,12,0.55);
+  }
+  .modal {
+    background: linear-gradient(180deg, #0d1220, #0b0e14); border-radius: 12px; padding: 18px 20px; width: 320px;
+    border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 20px 60px rgba(0,0,0,0.7); color:#eaf2ff; text-align:center;
+  }
+  .modal h3 { margin-bottom:8px; font-size:16px; }
+  .modal p { font-size:13px; color:#bcd4ff; margin-bottom:10px; }
+  .modal .ok { padding:8px 12px; border-radius:8px; background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.03); cursor:pointer; color:#eaf2ff; }
+
+  /* generate button */
+  .generate-btn { padding:8px 12px; border-radius:8px; background: linear-gradient(90deg,#2b6cff,#7d3cff); color:white; border:none; cursor:pointer; }
+
+</style>
+</head>
+<body>
+
+<canvas id="overlay"></canvas>
+
+<!-- Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Generated</h3>
+    <p id="modalMessage">Link copied to your clipboard (won’t actually copy)</p>
+    <button class="ok" id="modalOk">OK</button>
+  </div>
+</div>
+
+<!-- REC indicator (draggable) -->
+<div class="rec-indicator" id="recIndicator" title="REC indicator (drag me)"><div class="rec-dot"></div><div id="recText">REC</div></div>
+
+<!-- Main panel (draggable) -->
+<div class="panel" id="panel" title="Drag me">
+  <div class="header" id="panelHeader">
+    <div class="logo">ES</div>
+    <div>
+      <div class="title">ExoticSoftware</div>
+      <div class="subtitle">Overlay</div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="esp">ESP</button>
+    <button class="tab" data-tab="aimbot">Aimbot</button>
+    <button class="tab" data-tab="web">Web</button>
+    <button class="tab" data-tab="misc">Misc</button>
+  </div>
+
+  <!-- ESP Tab -->
+  <div id="tab-esp" class="tab-content">
+    <div class="row">
+      <div>
+        <div class="label">ESP Boxes</div>
+        <div class="small">Thin boxes, names, left healthbar — 5 targets</div>
+      </div>
+      <div class="control">
+        <div class="toggle on" id="espToggle"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <div class="label">Record Mode</div>
+        <div class="small">When on, ESP is hidden and REC indicator appears</div>
+      </div>
+      <div class="control">
+        <div class="toggle" id="recordToggle"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="note">ESP count fixed to 5 for consistent display.</div>
+  </div>
+
+  <!-- Aimbot Tab -->
+  <div id="tab-aimbot" class="tab-content" style="display:none;">
+    <div class="row">
+      <div>
+        <div class="label">Aimbot</div>
+        <div class="small">On / Off (Smooth)</div>
+      </div>
+      <div class="control">
+        <div class="toggle" id="aimbotToggle"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <div class="label">Lock FOV to Center</div>
+        <div class="small">When on, FOV stays at screen center</div>
+      </div>
+      <div class="control">
+        <div class="toggle on" id="lockFovToggle"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <div class="label">Aimbot FOV</div>
+        <div class="small">Adjust circle size</div>
+      </div>
+      <div class="control">
+        <input id="fovSize" type="range" min="30" max="600" value="160" />
+        <div class="slider-value" id="fovVal">160</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Web Tab -->
+  <div id="tab-web" class="tab-content" style="display:none; padding:6px 2px 0 2px;">
+    <div style="margin:6px 4px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div class="label" style="margin-bottom:6px;">Web Radar</div>
+          <div class="small">Enable web-based radar</div>
+        </div>
+        <div class="control">
+          <div class="toggle" id="webRadarToggle"><div class="knob"></div></div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+        <button class="generate-btn" id="generateBtn">Generate</button>
+        <div style="font-size:12px; color:#bcd4ff;">Generates a link </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Misc Tab -->
+  <div id="tab-misc" class="tab-content" style="display:none; padding:6px 2px 0 2px;">
+    <div style="margin:8px 4px;">
+      <div style="font-weight:700; color:#eaf2ff; font-size:14px; margin-bottom:6px;">Made by Exotic</div>
+      <div style="font-size:13px; color:#cfe1ff; margin-bottom:8px;"><strong>Game Version:</strong> 1.51.X</div>
+      <div style="font-size:12px; color:#98abcf;">ExoticSoftware — UI overlay.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="badge">ExoticSoftware v1.0</div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" id="regen">Regenerate</button>
+      <button class="btn" id="hideBtn">Hide</button>
+    </div>
+  </div>
+</div>
+
+<div class="crosshair" id="crosshair" aria-hidden="true"><div class="dot"></div></div>
+
+<script>
+/* Core canvas */
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+let W = canvas.width = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+window.addEventListener('resize', () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; draw(); });
+
+/* UI elements */
+const espToggle = document.getElementById('espToggle');
+const recordToggle = document.getElementById('recordToggle');
+const aimbotToggle = document.getElementById('aimbotToggle');
+const lockFovToggle = document.getElementById('lockFovToggle');
+const fovSize = document.getElementById('fovSize');
+const fovVal = document.getElementById('fovVal');
+const regen = document.getElementById('regen');
+const hideBtn = document.getElementById('hideBtn');
+const recIndicator = document.getElementById('recIndicator');
+
+const webRadarToggle = document.getElementById('webRadarToggle');
+const generateBtn = document.getElementById('generateBtn');
+
+const modalBackdrop = document.getElementById('modalBackdrop');
+const modalOk = document.getElementById('modalOk');
+const modalMessage = document.getElementById('modalMessage');
+
+/* Tabs */
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const tab = t.dataset.tab;
+    document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = 'block';
+  });
+});
+
+/* toggles */
+function toggleElement(el){ el.classList.toggle('on'); }
+[espToggle, recordToggle, aimbotToggle, lockFovToggle, webRadarToggle].forEach(t => {
+  t.addEventListener('click', () => {
+    toggleElement(t);
+    if(t === recordToggle || t === webRadarToggle){ updateRecordingState(); }
+  });
+});
+
+/* values reflect */
+fovSize.addEventListener('input', ()=> { fovVal.textContent = fovSize.value; draw(); });
+
+regen.addEventListener('click', ()=> { regenerateBoxes(); draw(); });
+hideBtn.addEventListener('click', ()=> { document.getElementById('panel').style.display='none'; });
+
+/* panel dragging (mouse + touch) - improved */
+(function makeDraggable(){
+  const panel = document.getElementById('panel');
+  const header = document.getElementById('panelHeader');
+  let dragging=false, ox=0, oy=0;
+
+  function startDrag(e){
+    dragging = true;
+    panel.classList.add('dragging');
+    const rect = panel.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    ox = clientX - rect.left;
+    oy = clientY - rect.top;
+  }
+  function doDrag(e){
+    if(!dragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    let nx = clientX - ox, ny = clientY - oy;
+    nx = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, nx));
+    ny = Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, ny));
+    panel.style.left = nx + 'px'; panel.style.top = ny + 'px'; panel.style.right = 'auto';
+  }
+  function endDrag(){
+    dragging=false; panel.classList.remove('dragging');
+  }
+
+  header.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', doDrag);
+  window.addEventListener('mouseup', endDrag);
+
+  header.addEventListener('touchstart', startDrag, {passive:false});
+  window.addEventListener('touchmove', doDrag, {passive:false});
+  window.addEventListener('touchend', endDrag);
+})();
+
+/* make rec-indicator draggable */
+(function makeRecDraggable(){
+  const el = document.getElementById('recIndicator');
+  let dragging=false, ox=0, oy=0;
+  function start(e){
+    dragging=true; el.classList.add('dragging');
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const rect = el.getBoundingClientRect();
+    ox = clientX - rect.left; oy = clientY - rect.top;
+  }
+  function move(e){
+    if(!dragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    let nx = clientX - ox, ny = clientY - oy;
+    nx = Math.max(6, Math.min(window.innerWidth - el.offsetWidth - 6, nx));
+    ny = Math.max(6, Math.min(window.innerHeight - el.offsetHeight - 6, ny));
+    el.style.left = nx + 'px'; el.style.top = ny + 'px';
+  }
+  function end(){ dragging=false; el.classList.remove('dragging'); }
+
+  el.addEventListener('mousedown', start);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+
+  el.addEventListener('touchstart', start, {passive:false});
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('touchend', end);
+})();
+
+/* fixed 5 boxes */
+let boxes = [];
+function regenerateBoxes(){
+  boxes = [];
+  const count = 5;
+  const padding = 12;
+  const minW = 60, maxW = 140;
+  const minH = 80, maxH = 160;
+  const triesLimit = 400;
+
+  for(let i=0;i<count;i++){
+    let tries=0;
+    while(tries++ < triesLimit){
+      const w = Math.floor(Math.random()*(maxW-minW))+minW;
+      const h = Math.floor(Math.random()*(maxH-minH))+minH;
+      const x = Math.floor(Math.random()*(W - w - padding*2)) + padding;
+      const y = Math.floor(Math.random()*(H - h - padding*2)) + padding;
+      const candidate = {x,y,w,h, name:"Player_"+(i+1), hp: Math.floor(20 + Math.random()*80)};
+      let ok = true;
+      for(const b of boxes){
+        if(!(x + w + 8 < b.x || b.x + b.w + 8 < x || y + h + 8 < b.y || b.y + b.h + 8 < y)){
+          ok = false; break;
+        }
+      }
+      if(ok){ boxes.push(candidate); break; }
+    }
+    if(tries>=triesLimit){
+      boxes.push({x:50+i*30, y:100+i*30, w:80, h:110, name:"Player_"+(i+1), hp: Math.floor(20 + Math.random()*80)});
+    }
+  }
+}
+
+/* mouse & center handling */
+let mouse = {x: W/2, y: H/2};
+window.addEventListener('mousemove', (e)=>{ mouse.x = e.clientX; mouse.y = e.clientY; if(!lockFovToggle.classList.contains('on')) draw(); });
+
+/* draw */
+function clear(){ ctx.clearRect(0,0,W,H); }
+
+function drawBoxes(){
+  if(!espToggle.classList.contains('on')) return;
+  if(recordToggle.classList.contains('on')) return; // hide while recording
+  const pad = 20;
+  for(const b of boxes){
+    const x = b.x - pad/2;
+    const y = b.y - pad/2;
+    const w = b.w + pad;
+    const h = b.h + pad;
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.setLineDash([]);
+    roundRectStroke(ctx, x, y, w, h, 6);
+
+    const barW = 6;
+    const hpRatio = Math.max(0, Math.min(1, b.hp / 100));
+    const barH = Math.floor(h * hpRatio);
+    const barX = x - (barW + 6);
+    const barY = y + (h - barH);
+    ctx.fillStyle = 'rgba(0,0,0,0.44)';
+    roundRect(ctx, barX, y, barW, h, 3);
+    const grad = ctx.createLinearGradient(0, y, 0, y+h);
+    grad.addColorStop(0, '#6ee37a'); grad.addColorStop(0.5, '#ffd24d'); grad.addColorStop(1, '#ff6b6b');
+    ctx.fillStyle = grad;
+    roundRect(ctx, barX, barY, barW, barH, 3);
+
+    ctx.font = '600 13px Inter, system-ui, -apple-system';
+    ctx.fillStyle = 'rgba(255,255,255,0.96)';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(b.name, x + 4, y - 8);
+
+    ctx.font = '12px Inter, system-ui';
+    ctx.fillStyle = 'rgba(160,185,255,0.9)';
+    const dist = (Math.floor(10 + Math.random()*240)) + 'm';
+    ctx.fillText(dist, x + w - ctx.measureText(dist).width - 6, y - 8);
+  }
+}
+
+function drawFOV(){
+  if(!(aimbotToggle.classList.contains('on') || lockFovToggle.classList.contains('on'))) return;
+  const r = parseInt(fovSize.value,10) || 160;
+  const cx = lockFovToggle.classList.contains('on') ? W/2 : mouse.x;
+  const cy = lockFovToggle.classList.contains('on') ? H/2 : mouse.y;
+
+  ctx.beginPath();
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = 'rgba(125,60,255,0.28)';
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.fillStyle = 'rgba(77,50,160,0.03)';
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fill();
+}
+
+/* helpers */
+function roundRectStroke(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  ctx.stroke();
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* main draw */
+function draw(){
+  clear();
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(0,0,0,0)');
+  g.addColorStop(1,'rgba(0,0,0,0.08)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  drawFOV();
+  drawBoxes();
+
+  if(recordToggle.classList.contains('on')){
+    recIndicator.style.visibility = 'visible';
+  } else {
+    recIndicator.style.visibility = 'hidden';
+  }
+}
+regenerateBoxes();
+draw();
+
+/* animation frame */
+let raf = null;
+function frame(){
+  draw();
+  raf = requestAnimationFrame(frame);
+}
+frame();
+
+/* keyboard shortcuts */
+window.addEventListener('keydown', (e) => {
+  if(e.key.toLowerCase()==='h'){ const p = document.getElementById('panel'); p.style.display = (p.style.display==='none') ? 'block' : 'none'; }
+  else if(e.key === 'r'){ regenerateBoxes(); draw(); }
+});
+
+/* Recording / web radar state update */
+function updateRecordingState(){
+  if(recordToggle.classList.contains('on')){
+    recIndicator.style.visibility = 'visible';
+  } else {
+    recIndicator.style.visibility = 'hidden';
+  }
+}
+
+/* Generate fake link button behavior */
+function makeFakeLink(){
+  const id = Math.random().toString(36).slice(2,9).toUpperCase();
+  return `https://exotic.software/track/${id}`;
+}
+generateBtn.addEventListener('click', ()=>{
+  const link = makeFakeLink();
+  // Show modal with simulated copy message
+  modalMessage.textContent = 'Generated — Link copied to your clipboard ';
+  modalBackdrop.style.display = 'flex';
+  // (explicitly do NOT copy to clipboard)
+  console.log('Generated link (simulated):', link);
+});
+modalOk.addEventListener('click', ()=>{ modalBackdrop.style.display = 'none'; });
+
+/* Modal close by clicking backdrop */
+modalBackdrop.addEventListener('click', (e)=>{
+  if(e.target === modalBackdrop) modalBackdrop.style.display = 'none';
+});
+
+/* prevent selection during drag */
+document.body.addEventListener('selectstart',(e)=>e.preventDefault());
+
+/* done */
+console.log('ExoticSoftware UI loaded.');
+</script>
+</body>
+</html>
